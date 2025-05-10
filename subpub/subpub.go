@@ -2,12 +2,13 @@ package subpub
 
 import (
 	"context"
+	"log"
 	"sync"
 )
 
-type MessageHandler func(msg interface{})
+type MessageHandler func(msg interface{}) //кастом тип
 
-type Subscription interface {
+type Subscription interface { //интерфейс
 	Unsubscribe()
 }
 
@@ -17,12 +18,13 @@ type SubPub interface {
 	Close(ctx context.Context) error
 }
 
-type subscriber struct {
+type subscriber struct { //структура
 	ch      chan interface{}
 	handle  MessageHandler
 	stop    chan struct{}
 	subject string
 	parent  *subPub
+	once    sync.Once
 }
 
 type subPub struct {
@@ -36,7 +38,7 @@ func NewSubPub() SubPub {
 	}
 }
 
-func (s *subPub) Subscribe(subject string, cb MessageHandler) (Subscription, error) {
+func (s *subPub) Subscribe(subject string, cb MessageHandler) (Subscription, error) { //метод
 	sub := &subscriber{
 		ch:      make(chan interface{}, 16),
 		handle:  cb,
@@ -44,12 +46,19 @@ func (s *subPub) Subscribe(subject string, cb MessageHandler) (Subscription, err
 		subject: subject,
 		parent:  s,
 	}
+
 	s.Lock()
 	s.subscribers[subject] = append(s.subscribers[subject], sub)
 	s.Unlock()
 
 	// Вот это запускает обработку входящих сообщений:
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[INFO][subpub] recovered from panic in handler %v", r)
+			}
+		}()
+
 		for {
 			select {
 			case msg := <-sub.ch:
@@ -64,19 +73,21 @@ func (s *subPub) Subscribe(subject string, cb MessageHandler) (Subscription, err
 }
 
 func (s *subscriber) Unsubscribe() {
-	close(s.stop)
+	s.once.Do(func() {
+		close(s.stop)
 
-	s.parent.Lock()
-	defer s.parent.Unlock()
+		s.parent.Lock()
+		defer s.parent.Unlock()
 
-	subs := s.parent.subscribers[s.subject]
-	for i, sub := range subs {
-		//Delete from slice
-		if sub == s {
-			s.parent.subscribers[s.subject] = append(subs[:i], subs[i+1:]...)
-			break
+		subs := s.parent.subscribers[s.subject]
+		for i, sub := range subs {
+			//Delete from slice
+			if sub == s {
+				s.parent.subscribers[s.subject] = append(subs[:i], subs[i+1:]...)
+				break
+			}
 		}
-	}
+	})
 }
 
 func (s *subPub) Publish(subject string, msg interface{}) error {
@@ -87,7 +98,7 @@ func (s *subPub) Publish(subject string, msg interface{}) error {
 	for _, sub := range subs {
 		select {
 		case sub.ch <- msg:
-		// успешно отправлено
+			// успешно отправлено
 		default:
 			// канал переполнен, лог или дроп
 		}
@@ -121,6 +132,7 @@ func (s *subPub) Close(ctx context.Context) error {
 		wg.Wait()
 		close(done)
 	}()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

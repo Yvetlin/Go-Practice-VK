@@ -1,11 +1,11 @@
-package subpub_test
+package test_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"awesomeProject1/subpub"
+	"Go-Practice-VK/subpub"
 )
 
 func TestBasicPubSub(t *testing.T) {
