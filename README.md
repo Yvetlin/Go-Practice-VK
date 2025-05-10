@@ -103,3 +103,6 @@ Go-Practice-VK/
 ```bash
 protoc -I proto --go_out=gen --go-grpc_out=gen proto/pubsub.proto
 ```
+
+// Author: Yvetlin [Gloria] \
+// Date: 2025

@@ -1,3 +1,5 @@
+// Author: Yvetlin [Gloria]
+// Date: 2025
 package subpub
 
 import (
